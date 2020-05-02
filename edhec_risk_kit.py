@@ -52,6 +52,47 @@ def  get_hfi_returns():
     return hfi
 
 
+def get_ind_returns():
+    '''
+    Load and format the Ken French 30 Industry Portfolio Value Weighted Monthly Returns
+    '''
+    ind = pd.read_csv('ind30_m_vw_rets.csv',
+                  header=0,
+                 index_col=0,
+                 parse_dates=True)/100
+    ind.index = pd.to_datetime(ind.index, format='%Y%m').to_period('M')
+    ind.columns = ind.columns.str.strip()
+    return ind
+
+
+def annualize_rets(r, periods_per_year):
+    '''
+    Annualizes the returns
+    '''
+    compounded_growth = (1+r).prod()
+    n_periods = r.shape[0]
+    return compounded_growth**(periods_per_year/n_periods)-1
+
+
+def annualize_vol(r, periods_per_year):
+    '''
+    Annualizes the volatility of a set of returns
+    '''
+    return r.std()*(periods_per_year**0.5)
+
+
+def sharpe_ratio(r, riskfree_rate, periods_per_year):
+    '''
+    Computes the annualized sharpe ratio of a set of returns
+    '''
+    # convert annual riskfree rate to per period
+    rf_per_period = (1+riskfree_rate)**(1/periods_per_year)-1
+    excess_ret = r - rf_per_period
+    ann_ex_ret = annualize_rets(excess_ret, periods_per_year)
+    ann_vol = annualize_vol(r, periods_per_year)
+    return ann_ex_ret/ann_vol
+
+
 def semideviation(r):
     '''
     Returns semideviation, aka negative semideviation of r
@@ -142,3 +183,31 @@ def cvar_historic(r, level=5):
         return r.aggregate(cvar_historic, level=level)
     else:
         raise TypeError('Expected r to be a Series or DataFrame.')
+        
+
+def portfolio_return(weights, returns):
+    '''
+    weights -> returns
+    '''
+    return weights.T @ returns
+
+
+def portfolio_vol(weights, covmat):
+    '''
+    weights -> vol
+    '''
+    return (weights.T @ covmat @ weights)**0.5
+
+
+def plot_ef2(n_points, er, cov, style='.-'):
+    '''
+    Plots the 2-asset efficient frontier
+    '''
+    weights = [np.array([w, 1-w]) for w in np.linspace(0, 1, n_points)]
+    rets = [portfolio_return(w, er) for w in weights]
+    vols = [portfolio_vol(w, cov) for w in weights]
+    ef = pd.DataFrame({
+        'Returns': rets,
+        'Volatility': vols
+    })
+    ef.plot.line(x='Volatility', y='Returns', style=style)
