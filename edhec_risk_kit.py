@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import scipy.stats
+import ipywidgets as widgets
 from scipy.stats import norm
 from scipy.optimize import minimize
 
@@ -534,3 +535,27 @@ cppi_controls = widgets.interactive(show_cppi,
                                    y_max=widgets.IntSlider(min=0, max=100, step=1, value=100, description='Zoom Y Axis')
                                    )
 
+
+def discount(t, r):
+    '''
+    Compute the price of a pure discount bond that pays a dollar at time t, given interest rate t
+    '''
+    return (1+r)**(-t)
+
+
+def pv(l, r):
+    '''
+    Compute present value of a sequence of liabilities
+    l is indexed by the time, and values are the amounts of each liability
+    returns present value
+    '''
+    dates = l.index
+    discounts = discount(dates, r)
+    return (discounts*l).sum()
+
+
+def funding_ratio(assets, liabilities, r):
+    '''
+    Computes funding ratio of some assets given liabilities and interest rate
+    '''
+    return assets/pv(liabilities, r)
