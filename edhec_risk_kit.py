@@ -688,3 +688,75 @@ def bond_total_return(monthly_prices, principal, coupon_rate, coupons_per_year):
     coupons.iloc[pay_date] = principal*coupon_rate/coupons_per_year
     total_returns = (monthly_prices + coupons)/monthly_prices.shift()-1
     return total_returns.dropna()
+
+
+def bt_mix(r1, r2, allocator, **kwargs):
+    '''
+    Runs a back test (simulation) of allocating between two sets of returns,
+    r1 and r2 are T x N DataFrames or returns where T is the time step index and N is the number of scenarios.
+    allocator is a fuction that takes two sets of returns and allocator specific parameters, and produces
+    an allocation to the first portfolio (the rest of the money is invested in GHP) as a T x 1 DataFrame
+    Returns a T x N DataFrame of the resultinf N portfolio scenarios
+    '''
+    if not r1.shape == r2.shape:
+        raise ValueError('r1 and r2 need to be the same shape.')
+    weights = allocator(r1, r2, **kwargs)
+    if not weights.shape == r1.shape:
+        raise ValueError('Allocator returned weights that dont match r1')
+    r_mix = weights*r1 + (1-weights)*r2
+    return r_mix
+
+
+def fixedmix_allocator(r1, r2, w1, **kwargs):
+    '''
+    Produces a time series over T steps of allocations between the PSP and GHP across N scenarions
+    PSP and GHP are T x N DataFrames that represent the returns of the PSP and GHP such that:
+        each column is a scenario
+        each row is the price for a timestamp
+    Returns a T x N DataFrame of PSP weights
+    '''
+    return pd.DataFrame(data=w1, index=r1.index, columns=r1.columns)
+
+
+def terminal_values(rets):
+    '''
+    Returns the final values of a dollar at the end of the return period for each scenario
+    '''
+    return (rets+1).prod()
+
+
+def terminal_stats(rets, floor=0.8, cap=np.inf, name='Stats'):
+    '''
+    Produce summary statistics on the terminal values per invested dollar across a range of N scenarios
+    rets is a T x N DataFrame of returns, where T is the time step (we assume rets is sorted by time)
+    returns a 1 column DataFrame of summary stats indexed by the stat name
+    '''
+    terminal_wealth = (rets+1).prod()
+    breach = terminal_wealth < floor
+    reach = terminal_wealth >= cap
+    p_breach = breach.mean() if breach.sum() > 0 else np.nan
+    p_reach = reach.mean() if reach.sum() > 0 else np.nan
+    e_short = (floor-terminal_wealth[breach]).mean() if breach.sum() > 0 else np.nan
+    e_surplus = (cap-terminal_wealth[reach]).mean() if reach.sum() > 0 else np.nan
+    sum_stats = pd.DataFrame.from_dict({
+        'mean': terminal_wealth.mean(),
+        'std': terminal_wealth.std(),
+        'p_breach': p_breach,
+        'e_short': e_short,
+        'p_reach': p_reach,
+        'e_surplus': e_surplus
+    }, orient='index', columns=[name])
+    return sum_stats
+    
+    
+def glidepath_allocator(r1, r2, start_glide=1, end_glide=0):
+    '''
+    Simulates a Target-Date-Fund style gradual move from r1 to r2
+    '''
+    n_points = r1.shape[0]
+    n_col = r1.shape[1]
+    path = pd.Series(data=np.linspace(start_glide, end_glide, num=n_points))
+    paths = pd.concat([path]*n_col, axis=1)
+    paths.index = r1.index
+    paths.columns = r1.columns
+    return paths
