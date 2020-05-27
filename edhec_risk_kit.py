@@ -41,6 +41,19 @@ def get_ffme_returns():
     return rets
 
 
+def get_fff_returns():
+    '''
+    Load the Fama-French research data monthly factors
+    '''
+    ffm = pd.read_csv('F-F_Research_Data_Factors_m.csv',
+                     header=0,
+                     index_col=0,
+                     parse_dates=True)
+    ffm = ffm/100
+    ffm.index = pd.to_datetime(ffm.index, format='%Y%m').to_period('M')
+    return ffm
+
+
 def  get_hfi_returns():
     '''
     Load and format the EDHEC Hedge Fund Index returns
@@ -168,6 +181,13 @@ def kurtosis(r):
     sigma_r = r.std(ddof=0)
     exp = (demeaned_r**4).mean()
     return exp/sigma_r**4
+
+
+def compound(r):
+    '''
+    returns the result of compounding the set of returns in r
+    '''
+    return np.expm1(np.log1p(r).sum())
 
 
 def is_normal(r, level=0.01):
