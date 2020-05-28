@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import scipy.stats
 import ipywidgets as widgets
+import statsmodels.api as sm
 from scipy.stats import norm
 from scipy.optimize import minimize
 
@@ -836,3 +837,60 @@ def drawdown_allocator(psp_r, ghp_r, maxdd, m=3):
         peak_value = np.maximum(peak_value, account_value)
         w_history.iloc[step] = psp_w
     return w_history
+
+
+def regress(dependent_variable, explanatory_variables, alpha=True):
+    '''
+    Runs a linear regression to decompose the dependent variable into the explanatory variables
+    returns an object of type statsmodel's RegressionResults on which you can call
+        .summay() to print a full summary
+        .params for the coefficients
+        .tvalues and .pvalues for the significance levels
+        .rsquared adj and .rsquared for quality of fit 
+    '''
+    if alpha:
+        explanatory_variables = explanatory_variables.copy()
+        explanatory_variables['Alpha'] = 1
+        
+    lm = sm.OLS(dependent_variable, explanatory_variables).fit()
+    return lm
+
+
+def tracking_error(r_a, r_b):
+    '''
+    Returns the tracking error between two return series
+    '''
+    return np.sqrt(((r_a - r_b)**2).sum())
+
+
+def portfolio_tracking_error(weights, ref_r, bb_r):
+    '''
+    returns the tracking error between the reference returns
+    and a portfolio of building block returns held with given weights
+    '''
+    return tracking_error(ref_r, (weights*bb_r).sum(axis=1))
+
+
+def style_analysis(dependent_variable, explanatory_variables):
+    '''
+    Returns the optimal weights that minimizes the tracking error between
+    a portfolio of the explanatory variables and the dependent variable
+    '''
+    n = explanatory_variables.shape[1]
+    init_guess = np.repeat(1/n, n)
+    bounds = ((0.0, 1.0),) * n
+    # construct the constraints
+    weights_sum_to_1 = {
+        'type': 'eq',
+        'fun': lambda weights: np.sum(weights) - 1
+    }
+    solution = minimize(portfolio_tracking_error,
+                       init_guess,
+                       args=(dependent_variable, explanatory_variables,),
+                       method='SLSQP',
+                       options={'disp': False},
+                       constraints=(weights_sum_to_1,),
+                       bounds=bounds)
+    weights = pd.Series(solution.x,
+                       index=explanatory_variables.columns)
+    return weights
