@@ -68,17 +68,53 @@ def  get_hfi_returns():
     return hfi
 
 
-def get_ind_returns():
+def get_ind_file(filetype, weighting='vw', n_inds=30):
     '''
-    Load and format the Ken French 30 Industry Portfolio Value Weighted Monthly Returns
+    Load and format the Ken French Industry Portfolio files
+    Variant is a tuple of (weighting, size) where:
+        weighting is one of 'ew', 'vw'
+        number of inds is 30 or 49
     '''
-    ind = pd.read_csv('ind30_m_vw_rets.csv',
-                  header=0,
-                 index_col=0,
-                 parse_dates=True)/100
+    if filetype is 'returns':
+        name = f'{weighting}_rets'
+        divisor = 100
+    elif filetype is 'nfirms':
+        name = 'nfirms'
+        divisor = 1
+    elif filetype is 'size':
+        name = 'size'
+        divisor = 1
+    else:
+        raise ValueError(f'filetype must be one of: returns, nfirms, size.')
+    
+    ind = pd.read_csv(f'ind{n_inds}_m_{name}.csv',
+                     header=0,
+                     index_col=0,
+                     na_values=-99.99)/divisor
     ind.index = pd.to_datetime(ind.index, format='%Y%m').to_period('M')
     ind.columns = ind.columns.str.strip()
     return ind
+
+
+def get_ind_returns(weighting='vw', n_inds=30):
+    '''
+    Load and format the Ken French Industry Portfolios Monthly Returns
+    '''
+    return get_ind_file('returns', weighting=weighting, n_inds=n_inds)
+
+
+def get_ind_nfirms(n_inds=30):
+    '''
+    Load and format the Ken French Industry Portfolios Average Number of Firms
+    '''
+    return get_ind_file('n_firms', n_inds=n_inds)
+
+
+def get_ind_size(n_inds=30):
+    '''
+    Load and format the Ken French Industry Portfolios Average Size (Market Cap)
+    '''
+    return get_ind_file('size', n_inds=n_inds)
 
 
 def get_ind_size():
