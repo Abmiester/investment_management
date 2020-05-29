@@ -107,7 +107,7 @@ def get_ind_nfirms(n_inds=30):
     '''
     Load and format the Ken French Industry Portfolios Average Number of Firms
     '''
-    return get_ind_file('n_firms', n_inds=n_inds)
+    return get_ind_file('nfirms', n_inds=n_inds)
 
 
 def get_ind_size(n_inds=30):
@@ -117,30 +117,18 @@ def get_ind_size(n_inds=30):
     return get_ind_file('size', n_inds=n_inds)
 
 
-def get_ind_size():
+def get_ind_market_caps(n_inds=30, weights=False):
     '''
-    Load and format the Ken French 30 Industry Portfolio Sizes
+    Load the industry portfolio data and derive the market caps
     '''
-    ind = pd.read_csv('ind30_m_size.csv',
-                  header=0,
-                 index_col=0,
-                 parse_dates=True)
-    ind.index = pd.to_datetime(ind.index, format='%Y%m').to_period('M')
-    ind.columns = ind.columns.str.strip()
-    return ind
-
-
-def get_ind_nfirms():
-    '''
-    Load and format the Ken French 30 Industry Portfolio number of firms
-    '''
-    ind = pd.read_csv('ind30_m_nfirms.csv',
-                  header=0,
-                 index_col=0,
-                 parse_dates=True)
-    ind.index = pd.to_datetime(ind.index, format='%Y%m').to_period('M')
-    ind.columns = ind.columns.str.strip()
-    return ind
+    ind_nfirms = get_ind_nfirms(n_inds=n_inds)
+    ind_size = get_ind_size(n_inds=n_inds)
+    ind_mktcap = ind_nfirms * ind_size
+    if weights:
+        total_mktcap = ind_mktcap.sum(axis=1)
+        ind_capweight = ind_mktcap.divide(total_mktcap, axis=0)
+        return ind_capweight
+    return ind_mktcap
 
 
 def get_total_market_index_returns():
@@ -930,3 +918,47 @@ def style_analysis(dependent_variable, explanatory_variables):
     weights = pd.Series(solution.x,
                        index=explanatory_variables.columns)
     return weights
+
+
+def weight_ew(r, cap_weights=None, max_cw_mult=None, microcap_threshold=None, **kwargs):
+    '''
+    Returns the weights of the EW portfolio based on the asset returns 'r' as a DataFrame
+    If supplied a set of Cap Weights and a Cap Weight tether, it is applied and reweighted
+    '''
+    n = len(r.columns)
+    ew = pd.Series(1/n, index=r.columns)
+    if cap_weights is not None:
+        cw = cap_weights.loc[r.index[0]]
+        # exclude microcaps
+        if microcap_threshold is not None and microcap_threshold > 0:
+            microcap = cw < microcap_threshold
+            ew[microcap] = 0
+            ew = ew/ew.sum()
+        # limit weight to a multiple of cap weight
+        if max_cw_mult is not None and max_cw_mult > 0:
+            ew = np.minimum(ew, cw*max_cw_mult)
+            ew = ew/ew.sum()
+    return ew
+
+
+def weight_cw(r, cap_weights, **kwargs):
+    '''
+    Returns the weights of the CW potfolio based on the time series of cap weights
+    '''
+    return cap_weights.loc[r.index[0]]
+
+
+def backtest_ws(r, estimation_window=60, weighting=weight_ew, **kwargs):
+    '''
+    Backtests a given weighting scheme, given some parameters:
+        r: asset returns to use to build the portfolio
+        estimation_window: the window to use to estimate parameters
+        weighting: the weighting scheme to use, must be a function that takes 'r' and a variable number of parameters
+    '''
+    n_periods = r.shape[0]
+    windows = [(start, start+estimation_window) for start in range(n_periods-estimation_window+1)]
+    weights = [weighting(r.iloc[win[0]:win[1]], **kwargs) for win in windows]
+    # turn list into dataframe
+    weights = pd.DataFrame(weights, index=r.iloc[estimation_window-1:].index, columns=r.columns)
+    returns = (weights*r).sum(axis=1, min_count=1)
+    return returns
