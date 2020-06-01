@@ -331,7 +331,7 @@ def minimize_vol(target_return, er, cov):
 
 def optimal_weights(n_points, er, cov):
     '''
-    -> list of weights to run the optimizer on to minimize the vol on
+    list of weights to run the optimizer on to minimize the vol on
     '''
     target_rs = np.linspace(er.min(), er.max(), n_points)
     weights = [minimize_vol(target_return, er, cov) for target_return in target_rs]
@@ -962,3 +962,42 @@ def backtest_ws(r, estimation_window=60, weighting=weight_ew, **kwargs):
     weights = pd.DataFrame(weights, index=r.iloc[estimation_window-1:].index, columns=r.columns)
     returns = (weights*r).sum(axis=1, min_count=1)
     return returns
+
+
+def sample_cov(r, **kwargs):
+    '''
+    Returns the sample covariance of the supplied returns
+    '''
+    return r.cov()
+
+
+def cc_cov(r, **kwargs):
+    '''
+    Estimates a covariance matrix by using the Elton/Gruber Constant Correlation model
+    '''
+    rhos = r.corr()
+    n = rhos.shape[0]
+    # rhos is a symmetric matrix with diagonals all 1, so mean correlation is:
+    rho_bar = (rhos.values.sum()-n)/(n*(n-1))
+    ccor = np.full_like(rhos, rho_bar)
+    np.fill_diagonal(ccor, 1.)
+    sd = r.std()
+    ccov = ccor * np.outer(sd, sd)
+    return pd.DataFrame(ccov, index=r.columns, columns=r.columns)
+
+
+def shrinkage_cov(r, delta=0.5, **kwargs):
+    '''
+    Covariance estimator that shrinks between the sample covariance and the constant correlation estimators
+    '''
+    prior = cc_cov(r, **kwargs)
+    sample = sample_cov(r, **kwargs)
+    return delta*prior + (1-delta)*sample
+
+
+def weight_gmv(r, cov_estimator=sample_cov, **kwargs):
+    '''
+    Produces the weights of the GMV portfolio given a covariance matrix of the returns
+    '''
+    est_cov = cov_estimator(r, **kwargs)
+    return gmv(est_cov)
